@@ -18,7 +18,10 @@ const pageLoadChatId = atom<string | undefined>(undefined);
 export function setPageLoadChatId(chatId: string) {
   const existing = pageLoadChatId.get();
   if (existing !== undefined && existing !== chatId) {
-    throw new Error(`pageLoadChatId already set to ${existing} but trying to set to ${chatId}`);
+    console.warn(
+      `pageLoadChatId already set to ${existing}, ignoring new value ${chatId}`
+    );
+    return; // ✅ don’t throw, just ignore duplicates
   }
   setChefDebugProperty('chatInitialId', chatId);
   pageLoadChatId.set(chatId);
@@ -44,15 +47,18 @@ export function setKnownInitialId(initialId: string) {
 
 // This is useful in places where we want a unique ID (e.g. logs) instead of the
 // more human-friendly `urlId`, which is only unique within the current session.
-export const initialIdStore = computed([pageLoadChatId, knownInitialId], (pageLoadChatId, knownInitialId) => {
-  if (knownInitialId !== undefined) {
-    return knownInitialId;
+export const initialIdStore = computed(
+  [pageLoadChatId, knownInitialId],
+  (pageLoadChatId, knownInitialId) => {
+    if (knownInitialId !== undefined) {
+      return knownInitialId;
+    }
+    if (pageLoadChatId === undefined) {
+      throw new Error('initialIdStore used before pageLoadChatId was set');
+    }
+    return pageLoadChatId;
   }
-  if (pageLoadChatId === undefined) {
-    throw new Error('initialIdStore used before pageLoadChatId was set');
-  }
-  return pageLoadChatId;
-});
+);
 
 /*
  * We may not know a chat's `urlId` until its first message.
@@ -83,7 +89,7 @@ export const chatIdStore = computed(
       throw new Error('chatIdStore used before pageLoadChatId was set');
     }
     return pageLoadChatId;
-  },
+  }
 );
 
 export function useChatId() {
@@ -91,8 +97,7 @@ export function useChatId() {
 }
 
 // Very important: This *only* updates the state in `window.history` and
-// does not reload the app. This way we keep all our in-memory state
-// intact.
+// does not reload the app. This way we keep all our in-memory state intact.
 function navigateChat(chatId: string) {
   const url = new URL(window.location.href);
   url.pathname = `/chat/${chatId}`;
